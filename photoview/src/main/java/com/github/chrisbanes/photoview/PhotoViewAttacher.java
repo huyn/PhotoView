@@ -15,6 +15,7 @@
  *******************************************************************************/
 package com.github.chrisbanes.photoview;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Matrix;
 import android.graphics.Matrix.ScaleToFit;
@@ -28,6 +29,7 @@ import android.view.View.OnLongClickListener;
 import android.view.ViewParent;
 import android.view.animation.AccelerateDecelerateInterpolator;
 import android.view.animation.Interpolator;
+import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.ImageView.ScaleType;
 import android.widget.OverScroller;
@@ -82,6 +84,7 @@ public class PhotoViewAttacher implements View.OnTouchListener,
     private OnLongClickListener mLongClickListener;
     private OnScaleChangedListener mScaleChangeListener;
     private OnSingleFlingListener mSingleFlingListener;
+    private OnDragToFinishListener mDragToFinishListener;
 
     private FlingRunnable mCurrentFlingRunnable;
     private int mScrollEdge = EDGE_BOTH;
@@ -89,6 +92,11 @@ public class PhotoViewAttacher implements View.OnTouchListener,
 
     private boolean mZoomEnabled = true;
     private ScaleType mScaleType = ScaleType.FIT_CENTER;
+    private boolean mDragToFinish = false;
+    private boolean mEnableDragToFinish = true;
+    private boolean mIsDragging = false;
+
+    private int mDragToFinishDistance = 500;
 
     public PhotoViewAttacher(ImageView imageView) {
         mImageView = imageView;
@@ -136,6 +144,9 @@ public class PhotoViewAttacher implements View.OnTouchListener,
         mGestureDetector.setOnDoubleTapListener(new GestureDetector.OnDoubleTapListener() {
             @Override
             public boolean onSingleTapConfirmed(MotionEvent e) {
+                if(mIsDragging) {
+                    return false;
+                }
                 if (mOnClickListener != null) {
                     mOnClickListener.onClick(mImageView);
                 }
@@ -270,13 +281,17 @@ public class PhotoViewAttacher implements View.OnTouchListener,
     }
 
     @Override
-    public void onDrag(float dx, float dy) {
+    public void onDrag(boolean isDraggindDown, float dx, float dy) {
         if (mScaleDragDetector.isScaling()) {
             return; // Do not drag if we are already scaling
         }
 
         mSuppMatrix.postTranslate(dx, dy);
-        checkAndDisplayMatrix();
+        if(isDraggindDown) {
+            mIsDragging = true;
+            computeDrag();
+        }
+        checkAndDisplayMatrix(isDraggindDown);
 
         /*
          * Here we decide whether to let the ImageView's parent to start taking
@@ -304,8 +319,16 @@ public class PhotoViewAttacher implements View.OnTouchListener,
     }
 
     @Override
-    public void onFling(float startX, float startY, float velocityX,
+    public void onDragEnd(boolean down) {
+        mIsDragging = false;
+        reverseFromDrag();
+    }
+
+    @Override
+    public void onFling(boolean down, float startX, float startY, float velocityX,
                         float velocityY) {
+        if(down)
+            return;
         mCurrentFlingRunnable = new FlingRunnable(mImageView.getContext());
         mCurrentFlingRunnable.fling(getImageViewWidth(mImageView),
                 getImageViewHeight(mImageView), (int) velocityX, (int) velocityY);
@@ -315,7 +338,7 @@ public class PhotoViewAttacher implements View.OnTouchListener,
     @Override
     public void onLayoutChange(View v, int left, int top, int right, int bottom, int oldLeft, int oldTop, int oldRight, int oldBottom) {
         // Update our base matrix, as the bounds have changed
-        updateBaseMatrix(mImageView.getDrawable());
+//        updateBaseMatrix(mImageView.getDrawable());
     }
 
     @Override
@@ -334,6 +357,7 @@ public class PhotoViewAttacher implements View.OnTouchListener,
         boolean handled = false;
 
         if (mZoomEnabled && Util.hasDrawable((ImageView) v)) {
+            mDragToFinish = false;
             switch (ev.getAction()) {
                 case MotionEvent.ACTION_DOWN:
                     ViewParent parent = v.getParent();
@@ -384,6 +408,42 @@ public class PhotoViewAttacher implements View.OnTouchListener,
         }
 
         return handled;
+    }
+
+    private void computeDrag() {
+        final RectF rect = getDisplayRect(getDrawMatrix());
+        if (rect == null) {
+            return;
+        }
+
+        final float height = rect.height(), width = rect.width();
+        float deltaX = 0, deltaY = 0;
+
+        final int viewHeight = getImageViewHeight(mImageView);
+        if (height <= viewHeight) {
+            deltaY = (viewHeight - height) / 2 - rect.top;
+        } else if (rect.top > 0) {
+            deltaY = -rect.top;
+        } else if (rect.bottom < viewHeight) {
+            deltaY = viewHeight - rect.bottom;
+        }
+
+        final int viewWidth = getImageViewWidth(mImageView);
+        if (width <= viewWidth) {
+            deltaX = (viewWidth - width) / 2 - rect.left;
+        } else if (rect.left > 0) {
+            deltaX = -rect.left;
+        } else if (rect.right < viewWidth) {
+            deltaX = viewWidth - rect.right;
+        } else {
+        }
+        if(mDragToFinishListener != null && mEnableDragToFinish) {
+            if(deltaY < 0) {
+                mDragToFinishListener.onDragged(Math.abs(deltaY) / mDragToFinishDistance);
+            } else {
+                mDragToFinishListener.onDragged(0);
+            }
+        }
     }
 
     public void setAllowParentInterceptOnEdge(boolean allow) {
@@ -520,6 +580,13 @@ public class PhotoViewAttacher implements View.OnTouchListener,
         return mDrawMatrix;
     }
 
+    public void setDragToFinishListener(int distance, OnDragToFinishListener listener) {
+        if(distance < 0)
+            return;
+        this.mDragToFinishDistance = distance;
+        this.mDragToFinishListener = listener;
+    }
+
     public void setZoomTransitionDuration(int milliseconds) {
         this.mZoomDuration = milliseconds;
     }
@@ -562,9 +629,16 @@ public class PhotoViewAttacher implements View.OnTouchListener,
      * Helper method that simply checks the Matrix, and then displays the result
      */
     private void checkAndDisplayMatrix() {
-        if (checkMatrixBounds()) {
+//        if (checkMatrixBounds()) {
+//            setImageViewMatrix(getDrawMatrix());
+//        } else {
+//        }
+        checkAndDisplayMatrix(false);
+    }
+
+    private void checkAndDisplayMatrix(boolean ignoreCheck) {
+        if(ignoreCheck || checkMatrixBounds())
             setImageViewMatrix(getDrawMatrix());
-        }
     }
 
     /**
@@ -584,18 +658,27 @@ public class PhotoViewAttacher implements View.OnTouchListener,
         return null;
     }
 
+    private void updateBaseMatrix(Drawable drawable) {
+        updateBaseMatrix(drawable, false, 0);
+    }
+
     /**
      * Calculate Matrix for FIT_CENTER
      *
      * @param drawable - Drawable being displayed
      */
-    private void updateBaseMatrix(Drawable drawable) {
+    float srcH=0,srcW=0;
+    float bitmapW, bitmapH;
+    private boolean updateBaseMatrix(Drawable drawable, boolean changeScale, float fraction) {
         if (drawable == null) {
-            return;
+            return false;
         }
 
-        final float viewWidth = getImageViewWidth(mImageView);
-        final float viewHeight = getImageViewHeight(mImageView);
+        if(changeScale && fraction <= 0)
+            return false;
+
+        final float viewWidth = mImageView.getWidth();//getImageViewWidth(mImageView);
+        final float viewHeight = mImageView.getHeight();//getImageViewHeight(mImageView);
         final int drawableWidth = drawable.getIntrinsicWidth();
         final int drawableHeight = drawable.getIntrinsicHeight();
 
@@ -604,57 +687,116 @@ public class PhotoViewAttacher implements View.OnTouchListener,
         final float widthScale = viewWidth / drawableWidth;
         final float heightScale = viewHeight / drawableHeight;
 
-        if (mScaleType == ScaleType.CENTER) {
-            mBaseMatrix.postTranslate((viewWidth - drawableWidth) / 2F,
-                    (viewHeight - drawableHeight) / 2F);
+        RectF mTempSrc = new RectF(0, 0, drawableWidth, drawableHeight);
+        RectF mTempDst = new RectF(0, 0, viewWidth, viewHeight);
+        float ratioDrawable = bitmapW > 0 ? (bitmapH * 1f / bitmapW) : (drawableHeight * 1f / drawableWidth);
+        float ratioCurrent = viewWidth > 0 ? (viewHeight * 1f / viewWidth) : 0;
+        float ratioTarget = 1f;
 
-        } else if (mScaleType == ScaleType.CENTER_CROP) {
-            float scale = Math.max(widthScale, heightScale);
-            mBaseMatrix.postScale(scale, scale);
-            mBaseMatrix.postTranslate((viewWidth - drawableWidth * scale) / 2F,
-                    (viewHeight - drawableHeight * scale) / 2F);
+        float targetW=0;
+        float targetH=0;
+        float scale=1f;
+//        if(ratioDrawable > ratioCurrent) {
+//            targetW = viewWidth;
+//            targetH = viewWidth * ratioDrawable;
+//        } else {
+//            targetH = viewHeight;
+//            targetW = viewHeight / ratioDrawable;
+//            scale = viewHeight * 1f / drawableHeight;
+//        }
 
-        } else if (mScaleType == ScaleType.CENTER_INSIDE) {
-            float scale = Math.min(1.0f, Math.min(widthScale, heightScale));
-            mBaseMatrix.postScale(scale, scale);
-            mBaseMatrix.postTranslate((viewWidth - drawableWidth * scale) / 2F,
-                    (viewHeight - drawableHeight * scale) / 2F);
+        float targetScale = 0;
 
-        } else {
-            RectF mTempSrc = new RectF(0, 0, drawableWidth, drawableHeight);
-            RectF mTempDst = new RectF(0, 0, viewWidth, viewHeight);
+        float currentW=0;
+        float currentH=0;
+        float translateX=0;
+        float translateY=0;
+        if(mBigWidth > 0 && changeScale) {
+            mTempDst = new RectF(0, 0, mBigWidth, mBigHeight);
+            ratioTarget = mBigHeight * 1f / mBigWidth;
 
-            if ((int) mBaseRotation % 180 != 0) {
-                mTempSrc = new RectF(0, 0, drawableHeight, drawableWidth);
+            if(ratioDrawable < ratioTarget) {
+                targetW = mBigWidth;
+                targetH = mBigWidth * ratioDrawable;
+            } else {
+                targetH = mBigHeight;
+                targetW = mBigHeight / ratioDrawable;
             }
 
-            switch (mScaleType) {
-                case FIT_CENTER:
-                    mBaseMatrix.setRectToRect(mTempSrc, mTempDst, ScaleToFit.CENTER);
-                    break;
-
-                case FIT_START:
-                    mBaseMatrix.setRectToRect(mTempSrc, mTempDst, ScaleToFit.START);
-                    break;
-
-                case FIT_END:
-                    mBaseMatrix.setRectToRect(mTempSrc, mTempDst, ScaleToFit.END);
-                    break;
-
-                case FIT_XY:
-                    mBaseMatrix.setRectToRect(mTempSrc, mTempDst, ScaleToFit.FILL);
-                    break;
-
-                default:
-                    break;
+            if(ratioDrawable > ratioCurrent) {
+                currentW = viewWidth;
+                currentH = viewWidth * ratioDrawable;
+            } else {
+                currentH = viewHeight;
+                currentW = viewHeight / ratioDrawable;
             }
+
+            float ratioSrc = mSrcHeight * 1f / mSrcWidth;
+            //System.out.println("+++++" + srcW + "/" + srcH + "/" + ratioDrawable + "/" + ratioCurrent);
+            if(srcH == 0 || srcW == 0) {
+                if (ratioDrawable > ratioCurrent) {
+                    srcW = mSrcWidth;
+                    srcH = mSrcWidth * ratioDrawable;
+                } else {
+                    srcH = mSrcHeight;
+                    srcW = mSrcHeight / ratioDrawable;
+                }
+                if(ratioCurrent == 0) {
+                    srcH = srcW = 0;
+                }
+            }
+
+            //TODO need check scale make sure it will not small than min value
+            scale = 1 + (srcW / targetW-1)*(1-fraction);
+            //System.out.println(changeScale + "-------" + viewHeight + "/" + viewWidth);
+            //System.out.println(ratioDrawable + "/" + ratioCurrent + "###############" + scale + "/" + srcW + "/" + targetW + "/" + fraction);
+            if(ratioCurrent > 0) {
+                if (ratioDrawable < ratioCurrent)
+                    //translateX = -(scale - 1) * targetW / 2 + (viewWidth - mBigWidth) / 2;
+                    translateX = (viewWidth - mBigWidth * scale)/2;
+                else
+                    //translateY = -(scale - 1) * targetH / 2 + (viewHeight - mBigHeight) / 2;
+                    translateY = (viewHeight - mBigHeight*scale)/2;
+                //translateY = 300;//(scale - 1) * viewHeight / 2;
+            }
+//            System.out.println("-------------------___" + ratioDrawable + "/" + ratioCurrent);
+//            System.out.println("bitmap size:" + bitmapW + "/" + bitmapH + "--" + drawableWidth + "/" + drawableHeight);
+//            System.out.println(fraction + "___" + srcW + "/" + srcH + "---" + mSrcWidth + "/" + mSrcHeight);
+//            System.out.println(translateX + "/" + translateY + "++++" + (viewHeight - mBigHeight) / 2 + "//" + scale);
+//            System.out.println(currentW + "/" + currentH + "--" + viewWidth + "/" + viewHeight + "--" + targetW + "/" + targetH);
+            //System.out.println(ratioCurrent + "/" + ratioDrawable + "/" + ratioTarget + "++++++++" + translateX + "/" + translateY + "///" + currentW + "/" + currentH);
         }
 
-        resetMatrix();
+            if ((int) mBaseRotation % 180 != 0) {
+                if(mBigWidth > 0)
+                    mTempSrc = new RectF(0, 0, mBigWidth, mBigHeight);
+                else
+                    mTempSrc = new RectF(0, 0, drawableHeight, drawableWidth);
+            }
+
+        //System.out.println("------------------resize:" + drawableWidth + "/" + drawableHeight + "--" + viewWidth + "/" + viewHeight);
+//        mTempDst = new RectF(0, 0, currentW, currentH);
+        if(currentH > 0)
+                    mBaseMatrix.setRectToRect(mTempSrc, mTempDst, ScaleToFit.CENTER);
+        if(scale > 0 && currentH > 0) {
+            mBaseMatrix.postScale(scale, scale);
+        }
+        if(mBigWidth > 0 && currentW > 0) {
+////            System.out.println("~~~~~~~~~~~~~~~" + viewWidth + '/' + mBigWidth);
+            mBaseMatrix.postTranslate(translateX, translateY);
+        }
+
+        if(currentH > 0) {
+            //System.out.println("---------------");
+            resetMatrix();
+        }
+
+        if(currentH > 0)
+        return true;
+        return false;
     }
 
     private boolean checkMatrixBounds() {
-
         final RectF rect = getDisplayRect(getDrawMatrix());
         if (rect == null) {
             return false;
@@ -665,17 +807,7 @@ public class PhotoViewAttacher implements View.OnTouchListener,
 
         final int viewHeight = getImageViewHeight(mImageView);
         if (height <= viewHeight) {
-            switch (mScaleType) {
-                case FIT_START:
-                    deltaY = -rect.top;
-                    break;
-                case FIT_END:
-                    deltaY = viewHeight - height - rect.top;
-                    break;
-                default:
-                    deltaY = (viewHeight - height) / 2 - rect.top;
-                    break;
-            }
+                deltaY = (viewHeight - height) / 2 - rect.top;
         } else if (rect.top > 0) {
             deltaY = -rect.top;
         } else if (rect.bottom < viewHeight) {
@@ -684,17 +816,7 @@ public class PhotoViewAttacher implements View.OnTouchListener,
 
         final int viewWidth = getImageViewWidth(mImageView);
         if (width <= viewWidth) {
-            switch (mScaleType) {
-                case FIT_START:
-                    deltaX = -rect.left;
-                    break;
-                case FIT_END:
-                    deltaX = viewWidth - width - rect.left;
-                    break;
-                default:
-                    deltaX = (viewWidth - width) / 2 - rect.left;
-                    break;
-            }
+            deltaX = (viewWidth - width) / 2 - rect.left;
             mScrollEdge = EDGE_BOTH;
         } else if (rect.left > 0) {
             mScrollEdge = EDGE_LEFT;
@@ -709,6 +831,169 @@ public class PhotoViewAttacher implements View.OnTouchListener,
         // Finally actually translate the matrix
         mSuppMatrix.postTranslate(deltaX, deltaY);
         return true;
+    }
+
+    private void reverseFromDrag() {
+        final RectF rect = getDisplayRect(getDrawMatrix());
+        if (rect == null) {
+            return;
+        }
+
+        final float height = rect.height(), width = rect.width();
+        float deltaX = 0, deltaY = 0;
+
+        final int viewHeight = getImageViewHeight(mImageView);
+        if (height <= viewHeight) {
+            deltaY = (viewHeight - height) / 2 - rect.top;
+        } else if (rect.top > 0) {
+            deltaY = -rect.top;
+        } else if (rect.bottom < viewHeight) {
+            deltaY = viewHeight - rect.bottom;
+        }
+
+        final int viewWidth = getImageViewWidth(mImageView);
+        if (width <= viewWidth) {
+            deltaX = (viewWidth - width) / 2 - rect.left;
+            mScrollEdge = EDGE_BOTH;
+        } else if (rect.left > 0) {
+            mScrollEdge = EDGE_LEFT;
+            deltaX = -rect.left;
+        } else if (rect.right < viewWidth) {
+            deltaX = viewWidth - rect.right;
+            mScrollEdge = EDGE_RIGHT;
+        } else {
+            mScrollEdge = EDGE_NONE;
+        }
+
+        if(deltaY <= -mDragToFinishDistance && mDragToFinishListener != null && mEnableDragToFinish) {
+            //doReverse();
+            mDragToFinish = true;
+            mDragToFinishListener.onDismiss();
+            System.out.println("+++++++++change mDragToFinish:" + mDragToFinish);
+            return;
+        }
+
+        // Finally actually translate the matrix
+        //mSuppMatrix.postTranslate(deltaX, deltaY);
+        final float targetX = deltaX;
+        final float targetY = deltaY;
+        mLastX = 0;
+        mLastY = 0;
+        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+        animator.setDuration(300);
+        animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator animation) {
+                float value = (float) animation.getAnimatedValue();
+
+                if(mDragToFinishListener != null && mEnableDragToFinish) {
+                    if(targetY < 0) {
+                        mDragToFinishListener.onDragged(Math.abs(targetY)*(1-value) / mDragToFinishDistance);
+                    } else {
+                        mDragToFinishListener.onDragged(0);
+                    }
+                }
+
+                float tx = targetX * value;
+                float ty = targetY * value;
+
+                mSuppMatrix.postTranslate(tx-mLastX, ty-mLastY);
+                mLastX = tx;
+                mLastY = ty;
+                setImageViewMatrix(getDrawMatrix());
+            }
+        });
+        animator.start();
+    }
+    private float mLastX, mLastY;
+
+    private int mBigWidth = 0;
+    private int mBigHeight = 0;
+    private int mSrcWidth=0;
+    private int mSrcHeight=0;
+    private static final int DURATION = 500;
+    public void doAnim() {
+        final int width = mImageView.getWidth();
+        final int height = mImageView.getHeight();
+        if(mBigWidth == 0) {
+            mBigWidth = width;
+
+            mSrcWidth = width/2;
+        }
+        if(mBigHeight == 0) {
+            mBigHeight = height;
+
+            mSrcHeight = height/2;
+        }
+
+        ValueAnimator animator = ValueAnimator.ofFloat(0.5f, 1f);
+        animator.setDuration(DURATION);
+        animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator animation) {
+                float value = (float) animation.getAnimatedValue();
+
+                FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mImageView.getLayoutParams();
+                params.width = (int) (width * value);
+                params.height = (int) (height*value);
+                mImageView.setLayoutParams(params);
+
+                updateBaseMatrix(mImageView.getDrawable(), true, animation.getAnimatedFraction());
+            }
+        });
+        animator.start();
+    }
+
+    public void doReverse() {
+        if(mBigHeight == 0)
+            return;
+
+        //setScale(getMinimumScale(), mImageView.getWidth()/2, mImageView.getHeight()/2, true);
+
+        ValueAnimator animator = ValueAnimator.ofFloat(1f, 0.5f);
+        animator.setDuration(DURATION);
+        animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator animation) {
+                float value = (float) animation.getAnimatedValue();
+
+                FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mImageView.getLayoutParams();
+                params.width = (int) (mBigWidth * value);
+                params.height = (int) (mBigHeight*value);
+                mImageView.setLayoutParams(params);
+
+                updateBaseMatrix(mImageView.getDrawable(), true, 1-animation.getAnimatedFraction());
+            }
+        });
+        animator.start();
+    }
+
+    public void setOriginArgs(int fullSizeW, int fullSizeH, int srcW, int srcH, int bitmapW, int bitmapH) {
+        this.mBigWidth = fullSizeW;
+        this.mBigHeight = fullSizeH;
+        this.mSrcWidth = srcW;
+        this.mSrcHeight = srcH;
+        this.srcW=0;
+        this.srcH=0;
+        this.bitmapW=bitmapW;
+        this.bitmapH=bitmapH;
+    }
+
+    public boolean resize(float fraction) {
+        return updateBaseMatrix(mImageView.getDrawable(), true, fraction);
+    }
+
+    public boolean isScaleOrDragged() {
+        System.out.println("++++++isScaleOrDragged:" + mDragToFinish + "/" + (getScale() == getMinimumScale()));
+        return getScale() > getMinimumScale() || mDragToFinish;
+    }
+
+    public boolean isScaled() {
+        return getScale() > getMinimumScale();
+    }
+
+    public void enableDragToFinish(boolean enable) {
+        this.mEnableDragToFinish = enable;
     }
 
     private int getImageViewWidth(ImageView imageView) {

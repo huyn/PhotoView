@@ -34,6 +34,7 @@ class CustomGestureDetector {
 
     private VelocityTracker mVelocityTracker;
     private boolean mIsDragging;
+    private boolean mIsDraggingDown;
     private float mLastTouchX;
     private float mLastTouchY;
     private final float mTouchSlop;
@@ -122,6 +123,7 @@ class CustomGestureDetector {
                 mLastTouchX = getActiveX(ev);
                 mLastTouchY = getActiveY(ev);
                 mIsDragging = false;
+                mIsDraggingDown = false;
                 break;
             case MotionEvent.ACTION_MOVE:
                 final float x = getActiveX(ev);
@@ -132,10 +134,13 @@ class CustomGestureDetector {
                     // Use Pythagoras to see if drag length is larger than
                     // touch slop
                     mIsDragging = Math.sqrt((dx * dx) + (dy * dy)) >= mTouchSlop;
+                    if(mIsDragging) {
+                        mIsDraggingDown = dy > 0;
+                    }
                 }
 
                 if (mIsDragging) {
-                    mListener.onDrag(dx, dy);
+                    mListener.onDrag(mIsDraggingDown, dx, dy);
                     mLastTouchX = x;
                     mLastTouchY = y;
 
@@ -169,10 +174,12 @@ class CustomGestureDetector {
                         // If the velocity is greater than minVelocity, call
                         // listener
                         if (Math.max(Math.abs(vX), Math.abs(vY)) >= mMinimumVelocity) {
-                            mListener.onFling(mLastTouchX, mLastTouchY, -vX,
+                            mListener.onFling(mIsDraggingDown, mLastTouchX, mLastTouchY, -vX,
                                     -vY);
                         }
                     }
+
+                    mListener.onDragEnd(mIsDraggingDown);
                 }
 
                 // Recycle Velocity Tracker

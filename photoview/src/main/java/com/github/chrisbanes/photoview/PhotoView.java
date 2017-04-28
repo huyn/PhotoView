@@ -117,7 +117,7 @@ public class PhotoView extends ImageView {
     @Override
     protected boolean setFrame(int l, int t, int r, int b) {
         boolean changed = super.setFrame(l, t, r, b);
-        if (changed) {
+        if (changed && !blockFrame) {
             attacher.update();
         }
         return changed;
@@ -231,4 +231,41 @@ public class PhotoView extends ImageView {
     public void setOnSingleFlingListener(OnSingleFlingListener onSingleFlingListener) {
         attacher.setOnSingleFlingListener(onSingleFlingListener);
     }
+
+    public void setDragToFinishListener(int distance, OnDragToFinishListener listener) {
+        attacher.setDragToFinishListener(distance, listener);
+    }
+
+    private boolean blockFrame = false;
+    public void doAnim() {
+        blockFrame = true;
+        attacher.doAnim();
+    }
+
+    public void doReverse() {
+        blockFrame = true;
+        attacher.doReverse();
+    }
+
+    public void setOriginArgs(int fullSizeW, int fullSizeH, int srcW, int srcH, int bitmapW, int bitmapH) {
+        blockFrame = true;
+        attacher.setOriginArgs(fullSizeW, fullSizeH, srcW, srcH, bitmapW, bitmapH);
+    }
+
+    public boolean resize(float fraction) {
+        return attacher.resize(fraction);
+    }
+
+    public boolean isScaleOrDragged() {
+        return attacher.isScaleOrDragged();
+    }
+
+    public void enableDragToFinish(boolean enable) {
+        attacher.enableDragToFinish(enable);
+    }
+
+    public boolean isScaled() {
+        return attacher.isScaled();
+    }
+
 }

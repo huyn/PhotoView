@@ -20,6 +20,8 @@
 
         <activity android:name=".SimpleSampleActivity" />
 
+        <activity android:name=".TranslateSampleActivity" />
+
         <activity android:name=".ViewPagerActivity" />
 
         <activity android:name=".RotationSampleActivity" />
