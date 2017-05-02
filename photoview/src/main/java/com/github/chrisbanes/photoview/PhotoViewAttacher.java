@@ -96,12 +96,8 @@ public class PhotoViewAttacher implements View.OnTouchListener,
     private boolean mEnableDragToFinish = true;
     private boolean mIsDragging = false;
 
-    private float mBaseScale;
-
     private int mDragToFinishDistance = 500;
 
-    private float mTranslateX=0;
-    private float mTranslateY=0;
     private float mAnchorX= 0;
     private float mAnchorY = 0;
 
@@ -287,11 +283,6 @@ public class PhotoViewAttacher implements View.OnTouchListener,
         return mScaleType;
     }
 
-    private void postTranslateSuppMatrix(float x, float y) {
-        mTranslateX+=x;
-        mTranslateY+=y;
-    }
-
     private void postScaleAnchor(float anchorX, float anchorY) {
         mAnchorX = anchorX;
         mAnchorY = anchorY;
@@ -304,7 +295,6 @@ public class PhotoViewAttacher implements View.OnTouchListener,
         }
 
         mSuppMatrix.postTranslate(dx, dy);
-        postTranslateSuppMatrix(dx, dy);
         System.out.println("++++++++++" + dx + "/" + dy);
         if(isDraggindDown) {
             mIsDragging = true;
@@ -766,7 +756,6 @@ public class PhotoViewAttacher implements View.OnTouchListener,
                 }
             }
 
-            mBaseScale = srcW/targetW;
             //TODO need check scale make sure it will not small than min value
             scale = 1 + (srcW / targetW-1)*(1-fraction);
             //System.out.println(changeScale + "-------" + viewHeight + "/" + viewWidth);
@@ -851,7 +840,6 @@ public class PhotoViewAttacher implements View.OnTouchListener,
 
         // Finally actually translate the matrix
         mSuppMatrix.postTranslate(deltaX, deltaY);
-        postTranslateSuppMatrix(deltaX, deltaY);
         return true;
     }
 
@@ -918,7 +906,6 @@ public class PhotoViewAttacher implements View.OnTouchListener,
                 float ty = targetY * value;
 
                 mSuppMatrix.postTranslate(tx-mLastX, ty-mLastY);
-                postTranslateSuppMatrix(tx-mLastX, ty-mLastY);
                 mLastX = tx;
                 mLastY = ty;
                 setImageViewMatrix(getDrawMatrix());
@@ -1005,106 +992,20 @@ public class PhotoViewAttacher implements View.OnTouchListener,
         if(mImageView.getDrawable() == null)
             return;
 
-        final float height = rect.height(), width = rect.width();
-        float deltaX = 0, deltaY = 0;
-
         final float viewWidth = mImageView.getWidth();//getImageViewWidth(mImageView);
         final float viewHeight = mImageView.getHeight();//getImageViewHeight(mImageView);
-        if (height <= viewHeight) {
-            deltaY = (viewHeight - height) / 2 - rect.top;
-        } else if (rect.top > 0) {
-            deltaY = -rect.top;
-        } else if (rect.bottom < viewHeight) {
-            deltaY = viewHeight - rect.bottom;
-        }
-
-        if (width <= viewWidth) {
-            deltaX = (viewWidth - width) / 2 - rect.left;
-            mScrollEdge = EDGE_BOTH;
-        } else if (rect.left > 0) {
-            mScrollEdge = EDGE_LEFT;
-            deltaX = -rect.left;
-        } else if (rect.right < viewWidth) {
-            deltaX = viewWidth - rect.right;
-            mScrollEdge = EDGE_RIGHT;
-        } else {
-            mScrollEdge = EDGE_NONE;
-        }
-
-        float startScale = mBaseScale;
 
         final float scale = getScale();
 
         srcW = srcH = 0;
 
-        final int drawableWidth = mImageView.getDrawable().getIntrinsicWidth();
-        final int drawableHeight = mImageView.getDrawable().getIntrinsicHeight();
-
-        RectF mTempSrc = new RectF(0, 0, drawableWidth, drawableHeight);
-        RectF mTempDst = new RectF(0, 0, viewWidth, viewHeight);
-        float ratioDrawable = bitmapW > 0 ? (bitmapH * 1f / bitmapW) : (drawableHeight * 1f / drawableWidth);
-        float ratioCurrent = viewWidth > 0 ? (viewHeight * 1f / viewWidth) : 0;
-        float ratioTarget = 1f;
-
-        float targetW=0;
-        float targetH=0;
-
-        float currentW=0;
-        float currentH=0;
-        float translateX=0;
-        float translateY=0;
-
-        mTempDst = new RectF(0, 0, newSizeW, newSizeH);
-        ratioTarget = newSizeH * 1f / newSizeW;
-
-        if(ratioDrawable < ratioTarget) {
-            targetW = newSizeW;
-            targetH = newSizeW * ratioDrawable;
-        } else {
-            targetH = newSizeH;
-            targetW = newSizeH / ratioDrawable;
-        }
-
-        if(ratioDrawable > ratioCurrent) {
-            currentW = viewWidth;
-            currentH = viewWidth * ratioDrawable;
-        } else {
-            currentH = viewHeight;
-            currentW = viewHeight / ratioDrawable;
-        }
-
-        //System.out.println("+++++" + srcW + "/" + srcH + "/" + ratioDrawable + "/" + ratioCurrent);
-        if(srcH == 0 || srcW == 0) {
-            if (ratioDrawable < ratioCurrent) {
-                srcW = mBigWidth;
-                srcH = mBigWidth * ratioDrawable;
-            } else {
-                srcH = mBigHeight;
-                srcW = mBigHeight / ratioDrawable;
-            }
-            if(ratioCurrent == 0) {
-                srcH = srcW = 0;
-            }
-        }
-
-        float newScale = srcW/targetW;
-
-        final float startX = mTranslateX;//deltaX;
-        final float startY = mTranslateY;//deltaY;
-
-        mLastX = 0;
-        mLastY = 0;
         lastScale = scale;
-        System.out.println("-------:::" + startX + "/" + startY + "/" + scale + "/" + mTranslateX + "/" + mTranslateY);
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
         animator.setDuration(300);
         animator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
             @Override
             public void onAnimationUpdate(ValueAnimator animation) {
                 float value = (float) animation.getAnimatedValue();
-
-                float tx = startX * value;
-                float ty = startY * value;
 
                 float scaleTmp = scale + (getMinimumScale()-scale)*value;
 
@@ -1117,14 +1018,9 @@ public class PhotoViewAttacher implements View.OnTouchListener,
                 mImageView.setLayoutParams(params);
 
                 float targetScale = scaleTmp/lastScale;
-                System.out.println("+++++++" + scaleTmp + "/" + (tx-mLastX) + "/" + (ty-mLastY) + "/" + targetScale + "//" + lastScale);
 
                 mSuppMatrix.postScale(targetScale, targetScale, mAnchorX, mAnchorY);
-//                mSuppMatrix.postScale(targetScale, targetScale);
                 lastScale = scaleTmp;
-//                mSuppMatrix.postTranslate(tx-mLastX, ty-mLastY); //deprecated if checkMatrixBounds invoked
-                mLastY = ty;
-                mLastX = tx;
 
 //                setImageViewMatrix(getDrawMatrix());
 //                checkMatrixBounds();
@@ -1146,43 +1042,13 @@ public class PhotoViewAttacher implements View.OnTouchListener,
         if(mImageView.getDrawable() == null)
             return;
 
-        final float height = rect.height(), width = rect.width();
-        float deltaX = 0, deltaY = 0;
-
         final float viewWidth = mImageView.getWidth();//getImageViewWidth(mImageView);
         final float viewHeight = mImageView.getHeight();//getImageViewHeight(mImageView);
-        if (height <= viewHeight) {
-            deltaY = (viewHeight - height) / 2 - rect.top;
-        } else if (rect.top > 0) {
-            deltaY = -rect.top;
-        } else if (rect.bottom < viewHeight) {
-            deltaY = viewHeight - rect.bottom;
-        }
-
-        if (width <= viewWidth) {
-            deltaX = (viewWidth - width) / 2 - rect.left;
-            mScrollEdge = EDGE_BOTH;
-        } else if (rect.left > 0) {
-            mScrollEdge = EDGE_LEFT;
-            deltaX = -rect.left;
-        } else if (rect.right < viewWidth) {
-            deltaX = viewWidth - rect.right;
-            mScrollEdge = EDGE_RIGHT;
-        } else {
-            mScrollEdge = EDGE_NONE;
-        }
-
-        float startScale = mBaseScale;
 
         final float scale = getScale();
 
         srcW = srcH = 0;
 
-        final float startX = mTranslateX;//deltaX;
-        final float startY = mTranslateY;//deltaY;
-
-        mLastX = 0;
-        mLastY = 0;
         lastScale = scale;
 //        System.out.println("-------:::" + startX + "/" + startY + "/" + scale + "/" + mTranslateX + "/" + mTranslateY);
         ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
@@ -1191,9 +1057,6 @@ public class PhotoViewAttacher implements View.OnTouchListener,
             @Override
             public void onAnimationUpdate(ValueAnimator animation) {
                 float value = (float) animation.getAnimatedValue();
-
-                float tx = startX * value;
-                float ty = startY * value;
 
                 float scaleTmp = scale + (getMinimumScale()-scale)*value;
 
@@ -1206,14 +1069,9 @@ public class PhotoViewAttacher implements View.OnTouchListener,
                 mImageView.setLayoutParams(params);
 
                 float targetScale = scaleTmp/lastScale;
-//                System.out.println("+++++++" + scaleTmp + "/" + (tx-mLastX) + "/" + (ty-mLastY) + "/" + targetScale + "//" + lastScale);
 
                 mSuppMatrix.postScale(targetScale, targetScale, mAnchorX, mAnchorY);
-//                mSuppMatrix.postScale(targetScale, targetScale);
                 lastScale = scaleTmp;
-//                mSuppMatrix.postTranslate(tx-mLastX, ty-mLastY); //deprecated if checkMatrixBounds invoked
-                mLastY = ty;
-                mLastX = tx;
 
 //                setImageViewMatrix(getDrawMatrix());
 //                checkMatrixBounds();
@@ -1292,7 +1150,7 @@ public class PhotoViewAttacher implements View.OnTouchListener,
         //TODO need check scale make sure it will not small than min value
         scale = newScale + (1 - newScale) * fraction;
 
-        System.out.println("-------" + viewHeight + "/" + viewWidth + "---" + mBaseScale + "/" + newScale);
+        System.out.println("-------" + viewHeight + "/" + viewWidth + "/" + newScale);
         System.out.println(ratioDrawable + "/" + ratioCurrent + "###############" + scale + "/" + originW + "/" + srcW + "/" + targetW + "/" + fraction);
         if(ratioCurrent > 0) {
             if (ratioDrawable < ratioCurrent)
@@ -1482,7 +1340,6 @@ public class PhotoViewAttacher implements View.OnTouchListener,
                 final int newY = mScroller.getCurrY();
 
                 mSuppMatrix.postTranslate(mCurrentX - newX, mCurrentY - newY);
-                postTranslateSuppMatrix(mCurrentX-newX, mCurrentY-newY);
                 setImageViewMatrix(getDrawMatrix());
 
                 mCurrentX = newX;
