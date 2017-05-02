@@ -256,6 +256,14 @@ public class PhotoView extends ImageView {
         return attacher.resize(fraction);
     }
 
+    public void resize(int w, int h) {
+        attacher.resize(w, h);
+    }
+
+    public void reverse(int w, int h, int originW, int originH) {
+        attacher.reverse(w, h, originW, originH);
+    }
+
     public boolean isScaleOrDragged() {
         return attacher.isScaleOrDragged();
     }

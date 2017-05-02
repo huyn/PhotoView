@@ -1,7 +1,7 @@
 # PhotoView
 PhotoView aims to help produce an easily usable implementation of a zooming Android ImageView.
 
-Add new Feature for animating from a random preview size to a new size more smooth
+Add new Feature for animating from a random preview size to a new size smoothly
 
 [![](https://jitpack.io/v/chrisbanes/PhotoView.svg)](https://jitpack.io/#chrisbanes/PhotoView)
 

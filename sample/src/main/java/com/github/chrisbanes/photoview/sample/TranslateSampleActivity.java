@@ -60,7 +60,7 @@ public class TranslateSampleActivity extends AppCompatActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_translate_anim);
+        setContentView(R.layout.activity_translation_anim);
 
         mRoot = findViewById(R.id.root);
 
@@ -165,28 +165,32 @@ public class TranslateSampleActivity extends AppCompatActivity {
         mPhotoView.setDragToFinishListener(600, new OnDragToFinishListener() {
             @Override
             public void onDragged(float fraction) {
-                System.out.println("################" + fraction);
+                //System.out.println("################" + fraction);
             }
 
             @Override
             public void onDismiss() {
-                System.out.println("################onDismiss");
+                //System.out.println("################onDismiss");
             }
         });
 
         findViewById(R.id.click_to_anim).setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                int width = mRoot.getWidth();
-                int height = mRoot.getHeight();
-                FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mImg.getLayoutParams();
-                params.width = width/2;
-                params.height = height/2;
-                mImg.setLayoutParams(params);
+//                int width = mRoot.getWidth();
+//                int height = mRoot.getHeight();
+//                FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mImg.getLayoutParams();
+//                params.width = width/2;
+//                params.height = height/2;
+//                mImg.setLayoutParams(params);
+//
+////                mImg.animate().translationX(width/2).translationY(height/2).setDuration(10000).start();
+//
+//                mPhotoView.doAnim();
 
-//                mImg.animate().translationX(width/2).translationY(height/2).setDuration(10000).start();
-
-                mPhotoView.doAnim();
+                int w = mPhotoView.getWidth();
+                int h = mPhotoView.getHeight();
+                mPhotoView.resize(w, h/2);
             }
         });
 
@@ -195,14 +199,16 @@ public class TranslateSampleActivity extends AppCompatActivity {
             public void onClick(View v) {
                 int width = mRoot.getWidth();
                 int height = mRoot.getHeight();
-                FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mImg.getLayoutParams();
-                params.width = width/2;
-                params.height = height/2;
-                mImg.setLayoutParams(params);
+//                FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mImg.getLayoutParams();
+//                params.width = width/2;
+//                params.height = height/2;
+//                mImg.setLayoutParams(params);
+//
+////                mImg.animate().translationX(width/2).translationY(height/2).setDuration(10000).start();
+//
+//                mPhotoView.doReverse();
 
-//                mImg.animate().translationX(width/2).translationY(height/2).setDuration(10000).start();
-
-                mPhotoView.doReverse();
+                mPhotoView.reverse(width, height, mPhotoView.getWidth(), mPhotoView.getHeight());
             }
         });
     }
